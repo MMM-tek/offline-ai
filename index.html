@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>IA Chat Offline</title>
-    <!-- Librerías locales -->
-    <script src="jszip.min.js"></script>
-    <script src="transformers.min.js"></script>
+    <!-- Librerías locales - con manejo de CORS -->
+    <script src="jszip.min.js" crossorigin="anonymous"></script>
+    <script src="transformers.min.js" crossorigin="anonymous"></script>
     <style>
         body { font-family: 'Segoe UI', sans-serif; background: #e5ddd5; margin: 0; display: flex; flex-direction: column; height: 100vh; }
         #header { background: #075e54; color: white; padding: 15px; text-align: center; font-weight: bold; }
@@ -57,14 +57,33 @@
     }
 
 
-    // El archivo de unpkg registra la librería en window.transformers
-    window.onload = () => {
-        if (window.transformers) {
-            console.log("Librería cargada correctamente.");
-        } else {
-            addMsg("Error: No se encontró transformers.min.js en la carpeta.", "sys");
+    // Verificar librerías cargadas correctamente
+    let libreriasCargadas = false;
+    
+    function esperarLibrerias() {
+        return new Promise((resolve) => {
+            let intentos = 0;
+            const verificar = setInterval(() => {
+                if (window.JSZip && window.transformers) {
+                    clearInterval(verificar);
+                    libreriasCargadas = true;
+                    console.log("✓ Librerías cargadas correctamente");
+                    resolve();
+                } else if (intentos++ > 30) {
+                    clearInterval(verificar);
+                    addMsg("⚠️ Advertencia: Las librerías no se cargaron correctamente, pero intentaremos continuar...", "sys");
+                    resolve();
+                }
+            }, 100);
+        });
+    }
+    
+    window.addEventListener('load', async () => {
+        await esperarLibrerias();
+        if (!libreriasCargadas) {
+            addMsg("⚠️ Las librerías se cargan desde la carpeta local. Este navegador podría tener problemas con file://", "sys");
         }
-    };
+    });
 
 
     zipInput.onchange = async (e) => {
@@ -76,7 +95,13 @@
 
 
         try {
-            const zip = await JSZip.loadAsync(file);
+            // Usar JSZip con validación
+            if (!window.JSZip) {
+                addMsg("❌ Error: JSZip no está disponible", "sys");
+                return;
+            }
+            
+            const zip = await window.JSZip.loadAsync(file);
             const modelFiles = {};
 
 
@@ -88,10 +113,20 @@
 
 
             // CONFIGURACIÓN OFFLINE
+            if (!window.transformers) {
+                addMsg("❌ Error: transformers no está disponible", "sys");
+                return;
+            }
+            
             const tf = window.transformers;
-            tf.env.allowRemoteModels = false;
-            tf.env.allowLocalModels = true;
-
+            
+            // Configurar para modo offline
+            try {
+                tf.env.allowRemoteModels = false;
+                tf.env.allowLocalModels = true;
+            } catch (e) {
+                console.log("Nota: Configuración de env no disponible");
+            }
 
             addMsg("🧠 Cargando IA en RAM...", "sys");
 
